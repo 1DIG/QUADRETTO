@@ -1,0 +1,478 @@
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gioco Strategico - Multiplayer + Movimento + Visibilità</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    #griglia {
+      display: grid;
+      grid-template-columns: repeat(200, 20px);
+      grid-template-rows: repeat(200, 20px);
+      gap: 1px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .cella {
+      width: 20px; height: 20px;
+      background-color: white;
+      border: 1px solid black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .giocatore { color: blue; }
+    .esercito { color: green; }
+    .proprioStato { background-color: #ccffcc; }
+    .bordoVerdeScuro { outline: 2px solid green; }
+    .nascosta { visibility: hidden; }
+  
+#miniMappa {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  border: 2px solid black;
+  background: white;
+  width: 200px;
+  height: 200px;
+  z-index: 10;
+}
+.zoom-controls {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 20;
+}
+.zoom-controls button {
+  margin: 2px;
+  font-size: 16px;
+}
+
+.cellaDisponibile {
+  background-color: yellow !important;
+}
+
+.cellaAttaccabile {
+  background-color: #ff9999 !important;
+}
+.cella {
+  transition: all 0.3s ease;
+}
+
+#timer {
+  font-size: 18px;
+  color: red;
+  margin-top: 10px;
+  font-weight: bold;
+}
+#timer10 {
+  font-size: 18px;
+  color: green;
+  margin-top: 10px;
+  font-weight: bold;
+}
+</style>
+
+
+
+
+</head>
+
+<body>
+  <div id="timer"></div>
+  <div id="timer10"></div>
+
+  <h1>Gioco Strategico - Movimento, Attacchi, Visibilità 2 celle</h1>
+  <div id="griglia"></div>
+  <script>
+    const griglia = document.getElementById("griglia");
+    const righe = 200, colonne = 200;
+    const celle = [];
+    let areaIniziale = null;
+let selezionata = null;
+    let numero1Posizionato = false;
+    let modalitaPosizionamento = true;
+    let numeriPosizionati = [];
+    let ultimoTurno = 0;
+    
+
+
+    for (let i = 0; i < righe; i++) {
+      celle[i] = [];
+      for (let j = 0; j < colonne; j++) {
+        const cella = document.createElement("div");
+        cella.classList.add("cella");
+        cella.dataset.riga = i;
+        cella.dataset.colonna = j;
+        griglia.appendChild(cella);
+        celle[i][j] = cella;
+      }
+    }
+
+    function distanza(r1, c1, r2, c2) {
+      return Math.abs(r1 - r2) + Math.abs(c1 - c2);
+    }
+
+    function sommaArea(r, c) {
+      let somma = 0;
+      for (let i = r - 4; i <= r + 4; i++) {
+        for (let j = c - 4; j <= c + 4; j++) {
+          if (i >= 0 && i < righe && j >= 0 && j < colonne) {
+            let n = parseInt(celle[i][j].textContent);
+            if (!isNaN(n)) somma += n;
+          }
+        }
+      }
+      return somma;
+    }
+
+    function evidenziaArea(area) {
+      for (let r = area.rigaMin; r <= area.rigaMax; r++) {
+        for (let c = area.colonnaMin; c <= area.colonnaMax; c++) {
+          celle[r][c].classList.add("proprioStato");
+          if (r === area.rigaMin || r === area.rigaMax || c === area.colonnaMin || c === area.colonnaMax) {
+            celle[r][c].classList.add("bordoVerdeScuro");
+          }
+        }
+      }
+    }
+
+    function aggiornaVisibilita() {
+      for (let i = 0; i < righe; i++) {
+        for (let j = 0; j < colonne; j++) {
+          const cella = celle[i][j];
+          cella.classList.remove("nascosta");
+          if (!cella.classList.contains("proprioStato")) {
+            let visibile = false;
+            for (let a = -2; a <= 2; a++) {
+              for (let b = -2; b <= 2; b++) {
+                const ni = i + a, nj = j + b;
+                if (ni >= 0 && ni < righe && nj >= 0 && nj < colonne) {
+                  if (celle[ni][nj].classList.contains("proprioStato")) {
+                    visibile = true;
+                  }
+                }
+              }
+            }
+            if (!visibile) {
+              cella.classList.add("nascosta");
+            }
+          }
+        }
+      }
+    }
+
+    function generaEsercito() {
+      const libere = [];
+      if (!areaIniziale) return;
+      for (let r = areaIniziale.rigaMin; r <= areaIniziale.rigaMax; r++) {
+        for (let c = areaIniziale.colonnaMin; c <= areaIniziale.colonnaMax; c++) {
+          if (celle[r][c].textContent === "") libere.push(celle[r][c]);
+        }
+      }
+      if (libere.length > 0) {
+        const scelta = libere[Math.floor(Math.random() * libere.length)];
+        scelta.textContent = "10";
+        scelta.classList.add("esercito", "proprioStato");
+        aggiornaVisibilita();
+      }
+    }
+
+    setInterval(generaEsercito, 30000);
+
+    griglia.addEventListener("click", (e) => {
+      if (!e.target.classList.contains("cella")) return;
+      const r = parseInt(e.target.dataset.riga);
+      const c = parseInt(e.target.dataset.colonna);
+      const cella = celle[r][c];
+
+      if (modalitaPosizionamento) {
+        if (!numero1Posizionato) {
+          const areaCheck = {
+            rigaMin: Math.max(0, r - 4),
+            rigaMax: Math.min(righe - 1, r + 4),
+            colonnaMin: Math.max(0, c - 4),
+            colonnaMax: Math.min(colonne - 1, c + 4)
+          };
+          for (let i = areaCheck.rigaMin; i <= areaCheck.rigaMax; i++) {
+            for (let j = areaCheck.colonnaMin; j <= areaCheck.colonnaMax; j++) {
+              if (celle[i][j].textContent !== "") {
+                alert("Zona iniziale già occupata da un altro stato.");
+                return;
+              }
+            }
+          }
+          cella.textContent = "1";
+          cella.classList.add("giocatore", "proprioStato");
+          areaIniziale = areaCheck;
+          numero1Posizionato = true;
+          evidenziaArea(areaIniziale);
+          numeriPosizionati.push(1);
+          aggiornaVisibilita();
+        } else {
+          if (!areaIniziale || r < areaIniziale.rigaMin || r > areaIniziale.rigaMax ||
+              c < areaIniziale.colonnaMin || c > areaIniziale.colonnaMax) {
+            alert("Inserisci solo dentro la tua area iniziale 9x9.");
+            return;
+          }
+          if (cella.textContent !== "") {
+            alert("Cella già occupata.");
+            return;
+          }
+          let input = prompt("Inserisci un numero da 2 a 9:");
+          let numero = parseInt(input);
+          if (!isNaN(numero) && numero >= 2 && numero <= 9) {
+            if (numeriPosizionati.includes(numero)) {
+              alert("Numero già usato.");
+              return;
+            }
+            cella.textContent = numero;
+            cella.classList.add("proprioStato");
+            numeriPosizionati.push(numero);
+            if (numeriPosizionati.length === 9) {
+              modalitaPosizionamento = false;
+              alert("Posizionamento completato!");
+              aggiornaVisibilita();
+            }
+          } else {
+            alert("Numero non valido.");
+          }
+        }
+      } else {
+        const ora = Date.now();
+        if (ora - ultimoTurno < 5000) {
+          alert("Attendi 5 secondi prima di agire di nuovo.");
+          return;
+        }
+        ultimoTurno = ora;
+
+        if (selezionata) {
+          const r1 = parseInt(selezionata.dataset.riga);
+          const c1 = parseInt(selezionata.dataset.colonna);
+          const n = parseInt(selezionata.textContent);
+          const d = distanza(r1, c1, r, c);
+          const maxD = n === 1 ? 4 : n === 10 ? 1 : 2;
+
+          if (d > maxD) {
+            alert("Mossa troppo lontana.");
+            
+if (selezionata) selezionata.classList.remove("selezionata");
+for (let i = 0; i < righe; i++) {
+  for (let j = 0; j < colonne; j++) {
+    celle[i][j].classList.remove("cellaDisponibile"); celle[i][j].classList.remove("cellaAttaccabile");
+  }
+}
+selezionata = null;
+
+            return;
+          }
+
+          if (cella.textContent === "") {
+            cella.textContent = n;
+            cella.classList.add("proprioStato");
+            selezionata.textContent = "";
+            if (!cella.classList.contains("giocatore")) { selezionata.classList.remove("proprioStato"); }
+          if (n === 1) selezionata.classList.remove("giocatore");
+          } else {
+            const conferma = confirm("Vuoi attaccare questa cella?");
+            if (conferma) {
+              const mia = sommaArea(r1, c1);
+              const sua = sommaArea(r, c);
+              if (mia > sua) {
+                cella.textContent = "10";
+                cella.className = "cella esercito proprioStato";
+                selezionata.textContent = "";
+                if (!cella.classList.contains("giocatore")) { selezionata.classList.remove("proprioStato"); }
+          if (n === 1) selezionata.classList.remove("giocatore");
+              } else {
+                alert("Attacco fallito.");
+              }
+            }
+          }
+          
+if (selezionata) selezionata.classList.remove("selezionata");
+for (let i = 0; i < righe; i++) {
+  for (let j = 0; j < colonne; j++) {
+    celle[i][j].classList.remove("cellaDisponibile"); celle[i][j].classList.remove("cellaAttaccabile");
+  }
+}
+selezionata = null;
+
+          aggiornaVisibilita();
+        } else {
+          const num = parseInt(cella.textContent);
+          if (!isNaN(num) && (numeriPosizionati.includes(num) || num === 10)) {
+            
+if (selezionata) {
+  selezionata.classList.remove("selezionata");
+  for (let i = 0; i < righe; i++) {
+    for (let j = 0; j < colonne; j++) {
+      celle[i][j].classList.remove("cellaDisponibile"); celle[i][j].classList.remove("cellaAttaccabile");
+    }
+  }
+}
+selezionata = cella;
+const num = parseInt(cella.textContent);
+const maxD = num === 1 ? 4 : (num === 10 ? 1 : 2);
+evidenziaCelleDisponibili(r, c, maxD);
+evidenziaCelleAttaccabili(r, c, maxD);
+
+          } else {
+            alert("Seleziona un tuo numero.");
+          }
+        }
+      }
+    });
+  
+let zoom = 1;
+const grigliaEl = document.getElementById("griglia");
+function zoomIn() {
+  zoom += 0.1;
+  grigliaEl.style.transform = `scale(${zoom})`;
+}
+function zoomOut() {
+  zoom = Math.max(0.1, zoom - 0.1);
+  grigliaEl.style.transform = `scale(${zoom})`;
+}
+
+const miniCanvas = document.getElementById("miniMappa");
+const miniCtx = miniCanvas.getContext("2d");
+function aggiornaMiniMappa() {
+  const scaleX = miniCanvas.width / colonne;
+  const scaleY = miniCanvas.height / righe;
+  for (let y = 0; y < righe; y++) {
+    for (let x = 0; x < colonne; x++) {
+      const cella = celle[y][x];
+      let colore = "#eee";
+      if (cella.classList.contains("giocatore")) colore = "blue";
+      else if (cella.classList.contains("esercito")) colore = "orange";
+      else if (cella.classList.contains("proprioStato")) colore = "#66cc66";
+      miniCtx.fillStyle = colore;
+      miniCtx.fillRect(x * scaleX, y * scaleY, scaleX, scaleY);
+    }
+  }
+}
+setInterval(aggiornaMiniMappa, 3000);
+
+
+function evidenziaCelleDisponibili(r1, c1, maxD) {
+  for (let i = 0; i < righe; i++) {
+    for (let j = 0; j < colonne; j++) {
+      celle[i][j].classList.remove("cellaDisponibile"); celle[i][j].classList.remove("cellaAttaccabile");
+    }
+  }
+  for (let i = 0; i < righe; i++) {
+    for (let j = 0; j < colonne; j++) {
+      const distanza = Math.abs(r1 - i) + Math.abs(c1 - j);
+      if (distanza > 0 && distanza <= maxD && celle[i][j].textContent === "") {
+        celle[i][j].classList.add("cellaDisponibile");
+      }
+    }
+  }
+}
+
+
+function evidenziaCelleAttaccabili(r1, c1, maxD) {
+  for (let i = 0; i < righe; i++) {
+    for (let j = 0; j < colonne; j++) {
+      celle[i][j].classList.remove("cellaAttaccabile");
+    }
+  }
+  const mioNumero = parseInt(celle[r1][c1].textContent);
+  if (isNaN(mioNumero)) return;
+
+  for (let i = 0; i < righe; i++) {
+    for (let j = 0; j < colonne; j++) {
+      const distanza = Math.abs(r1 - i) + Math.abs(c1 - j);
+      const valore = parseInt(celle[i][j].textContent);
+      if (
+        distanza > 0 &&
+        distanza <= maxD &&
+        !isNaN(valore) &&
+        valore !== mioNumero &&
+        valore !== 0
+      ) {
+        celle[i][j].classList.add("cellaAttaccabile");
+      }
+    }
+  }
+}
+
+
+let tempoPerMossa = 5; // 5 secondi per la mossa
+let tempoPerNumero10 = 30; // 30 secondi per ottenere il numero 10
+
+// Funzione per il cronometro mossa
+function aggiornaTimerMossa() {
+  const timerMossa = document.getElementById("timer");
+  if (tempoPerMossa > 0) {
+    timerMossa.textContent = "Prossima mossa in: " + tempoPerMossa + " secondi";
+    tempoPerMossa--;
+  } else {
+    timerMossa.textContent = "Puoi fare la prossima mossa!";
+    tempoPerMossa = 5; // Reset timer mossa
+  }
+}
+
+// Funzione per il cronometro numero 10
+function aggiornaTimerNumero10() {
+  const timer10 = document.getElementById("timer10");
+  if (tempoPerNumero10 > 0) {
+    timer10.textContent = "Numero 10 disponibile tra: " + tempoPerNumero10 + " secondi";
+    tempoPerNumero10--;
+  } else {
+    timer10.textContent = "Numero 10 generato!";
+    tempoPerNumero10 = 30; // Reset timer 10
+  }
+}
+
+// Esegui i cronometri ogni secondo
+setInterval(aggiornaTimerMossa, 1000);
+setInterval(aggiornaTimerNumero10, 1000);
+
+
+let celleInAttesaConquista = [];
+
+function controlloConquista() {
+  celleInAttesaConquista.forEach(cella => {
+    const r = parseInt(cella.dataset.riga);
+    const c = parseInt(cella.dataset.colonna);
+    let contatoriLati = 0;
+
+    // Verifica se 3 su 4 lati sono occupati da stato (verde)
+    if (r > 0 && celle[r-1][c].classList.contains("proprioStato")) contatoriLati++; // lato superiore
+    if (r < righe - 1 && celle[r+1][c].classList.contains("proprioStato")) contatoriLati++; // lato inferiore
+    if (c > 0 && celle[r][c-1].classList.contains("proprioStato")) contatoriLati++; // lato sinistro
+    if (c < colonne - 1 && celle[r][c+1].classList.contains("proprioStato")) contatoriLati++; // lato destro
+
+    // Se 3 lati su 4 sono occupati, conquista la cella
+    if (contatoriLati >= 3) {
+      celle[r][c].classList.add("proprioStato");
+      celle[r][c].style.backgroundColor = "#66cc66"; // verde per indicare la conquista
+      celleInAttesaConquista = celleInAttesaConquista.filter(c => c !== cella); // rimuovi dalla lista
+    }
+  });
+}
+
+// Funzione per avviare il timer di conquista
+function avviaTimerConquista(cella) {
+  setTimeout(() => {
+    celleInAttesaConquista.push(cella); // aggiungi la cella alla lista per il controllo
+  }, 50000); // 50 secondi
+}
+
+</script>
+
+<div class="zoom-controls">
+  <button onclick="zoomIn()">Zoom In</button>
+  <button onclick="zoomOut()">Zoom Out</button>
+</div>
+<canvas id="miniMappa"></canvas>
+</body>
+
+</html>
